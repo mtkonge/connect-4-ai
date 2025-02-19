@@ -10,9 +10,34 @@ pub struct Board {
     columns: u128,
 }
 
+#[derive(Debug)]
 pub enum PlaceChipError {
     ColumnOccupied,
     InvalidColumn,
+}
+
+const fn padded_mask(count: usize, padding: usize) -> u128 {
+    let mut i = 0;
+    let mut result = 0;
+    loop {
+        if i == count {
+            break result << padding;
+        }
+        result = (result << 1) | 0b1;
+        i += 1;
+    }
+}
+
+const fn mask(count: usize) -> u128 {
+    let mut i = 0;
+    let mut result = 0;
+    loop {
+        if i == count {
+            break result;
+        }
+        result = (result << 1) | 0b1;
+        i += 1;
+    }
 }
 
 impl Board {
@@ -30,7 +55,7 @@ impl Board {
         if column >= Self::COLUMN_LEN {
             return Err(PlaceChipError::InvalidColumn);
         }
-        let chips = ((self.columns) >> (Self::ROW_BITS_LEN * column)) & 0b11_11_11_11_11_11_11;
+        let chips = ((self.columns) >> (Self::ROW_BITS_LEN * column)) & mask(Self::ROW_BITS_LEN);
         let chips_placed = chips.count_ones() as usize;
         if chips_placed >= Self::ROW_LEN {
             return Err(PlaceChipError::ColumnOccupied);
@@ -42,7 +67,7 @@ impl Board {
 
     fn chip_at(&self, column: usize, row: usize) -> Option<Chip> {
         let chips = ((self.columns) >> (Self::ROW_BITS_LEN * column)) as usize;
-        let chip = ((chips) >> (Self::CHIP_BITS_LEN * row)) & 0b11;
+        let chip = ((chips) >> (Self::CHIP_BITS_LEN * row)) & mask(Self::CHIP_BITS_LEN) as usize;
         match chip {
             0b00 => None,
             0b01 => Some(Chip::Red),
@@ -100,11 +125,15 @@ impl Board {
     }
 
     pub fn available_choices(&self) -> Vec<usize> {
-        todo!("fix properly!");
         (0..Self::COLUMN_LEN)
             .filter(|column| {
                 let chips = ((self.columns) >> (Self::ROW_BITS_LEN * column)) as usize;
-                chips & 0b11_00_00_00_00_00_00 == 0
+                let last_chip_in_row_mask = padded_mask(
+                    Self::CHIP_BITS_LEN,
+                    Self::ROW_BITS_LEN - Self::CHIP_BITS_LEN,
+                ) as usize;
+
+                chips & last_chip_in_row_mask == 0
             })
             .collect()
     }
@@ -118,7 +147,23 @@ impl Display for Board {
 
 #[cfg(test)]
 mod test {
-    use crate::{Board, Chip};
+    use crate::{
+        board::{mask, padded_mask},
+        Board, Chip,
+    };
+
+    #[test]
+    fn test_mask() {
+        assert_eq!(mask(0), 0b0);
+        assert_eq!(mask(1), 0b1);
+        assert_eq!(mask(5), 0b11111);
+        assert_eq!(mask(12), 0b11_11_11_11_11_11);
+
+        assert_eq!(padded_mask(0, 0), 0b0);
+        assert_eq!(padded_mask(1, 0), 0b1);
+        assert_eq!(padded_mask(5, 5), 0b11111_00000);
+        assert_eq!(padded_mask(12, 3), 0b11_11_11_11_11_11_000);
+    }
 
     #[test]
     fn set_get() {
@@ -127,6 +172,7 @@ mod test {
         board.set_chip_at(3, 4, Chip::Yellow);
         assert_eq!(board.chip_at(2, 2), Some(Chip::Red));
         assert_eq!(board.chip_at(3, 4), Some(Chip::Yellow));
+        assert_eq!(board.chip_at(4, 3), None);
     }
 
     #[test]
@@ -157,20 +203,18 @@ mod test {
     #[test]
     fn available_choices() {
         let mut board = Board::new();
-        let _ = board.place_chip(0, Chip::Red);
-        let _ = board.place_chip(1, Chip::Red);
-        let _ = board.place_chip(2, Chip::Red);
-        let _ = board.place_chip(3, Chip::Red);
+        let _ = board.place_chip(0, Chip::Red).unwrap();
+        let _ = board.place_chip(0, Chip::Red).unwrap();
+        let _ = board.place_chip(1, Chip::Red).unwrap();
+        let _ = board.place_chip(2, Chip::Red).unwrap();
+        let _ = board.place_chip(3, Chip::Red).unwrap();
         assert_eq!(board.available_choices().len(), 7);
-        let _ = board.place_chip(0, Chip::Red);
-        let _ = board.place_chip(0, Chip::Red);
-        let _ = board.place_chip(0, Chip::Red);
-        let _ = board.place_chip(0, Chip::Red);
-        let _ = board.place_chip(0, Chip::Red);
-        let _ = board.place_chip(0, Chip::Red);
-        let _ = board.place_chip(0, Chip::Red);
-        let _ = board.place_chip(0, Chip::Red);
-        let _ = board.place_chip(0, Chip::Red);
+        let _ = board.place_chip(0, Chip::Red).unwrap();
+        let _ = board.place_chip(0, Chip::Red).unwrap();
+        let _ = board.place_chip(0, Chip::Red).unwrap();
+        let _ = board.place_chip(0, Chip::Red).unwrap();
+        let _ = board.place_chip(0, Chip::Red).unwrap_err();
+        let _ = board.place_chip(0, Chip::Red).unwrap_err();
         assert_eq!(board.available_choices().len(), 6);
     }
 }
