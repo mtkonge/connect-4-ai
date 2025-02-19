@@ -1,7 +1,4 @@
-use std::{
-    fmt::Display,
-    io::{self, Write},
-};
+use std::io::{self, Write};
 
 use board::{Board, Chip};
 
@@ -154,7 +151,7 @@ impl Player {
         let choice_results: Vec<Board> = Vec::new();
         for column_idx in board.available_choices() {
             let choice = Choice {
-                board: board.clone(),
+                board,
                 column: column_idx,
             };
         }
