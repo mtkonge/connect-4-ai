@@ -127,7 +127,7 @@ impl Board {
     pub fn available_choices(&self) -> Vec<usize> {
         (0..Self::COLUMN_LEN)
             .filter(|column| {
-                let chips = ((self.columns) >> (Self::ROW_BITS_LEN * column)) as usize;
+                let chips = (self.columns >> (Self::ROW_BITS_LEN * column)) as usize;
                 let last_chip_in_row_mask = padded_mask(
                     Self::CHIP_BITS_LEN,
                     Self::ROW_BITS_LEN - Self::CHIP_BITS_LEN,
@@ -141,7 +141,25 @@ impl Board {
 
 impl Display for Board {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        todo!()
+        let column_indicators = {
+            let column_indicators: [_; Self::COLUMN_LEN] =
+                std::array::from_fn(|column| column.to_string());
+            column_indicators.join(" ")
+        };
+        let rows = {
+            let mut rows: [_; Self::ROW_LEN] = std::array::from_fn(|row| {
+                let columns: [_; Self::COLUMN_LEN] =
+                    std::array::from_fn(|column| match self.chip_at(column, row) {
+                        Some(Chip::Red) => "\x1b[0;31mO\x1b[0m",
+                        Some(Chip::Yellow) => "\x1b[0;33mO\x1b[0m",
+                        None => " ",
+                    });
+                format!("|{}|", columns.join("|"))
+            });
+            rows.reverse();
+            rows.join("\n")
+        };
+        write!(f, " {column_indicators} \n{rows}")
     }
 }
 
