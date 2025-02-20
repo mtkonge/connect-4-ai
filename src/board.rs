@@ -5,7 +5,9 @@ pub enum Chip {
     Red,
     Yellow,
 }
-#[derive(Debug, Clone, Copy, PartialEq)]
+
+#[repr(transparent)]
+#[derive(Debug, Eq, Clone, Copy, PartialEq, Hash)]
 pub struct Board {
     columns: u128,
 }
@@ -41,8 +43,8 @@ const fn mask(count: usize) -> u128 {
 }
 
 impl Board {
-    const COLUMN_LEN: usize = 7;
-    const ROW_LEN: usize = 6;
+    pub const COLUMN_LEN: usize = 7;
+    pub const ROW_LEN: usize = 6;
 
     const ROW_BITS_LEN: usize = Self::ROW_LEN * Self::CHIP_BITS_LEN;
     const CHIP_BITS_LEN: usize = 2;
@@ -124,18 +126,16 @@ impl Board {
         self.columns |= chip << offset;
     }
 
-    pub fn available_choices(&self) -> Vec<usize> {
-        (0..Self::COLUMN_LEN)
-            .filter(|column| {
-                let chips = (self.columns >> (Self::ROW_BITS_LEN * column)) as usize;
-                let last_chip_in_row_mask = padded_mask(
-                    Self::CHIP_BITS_LEN,
-                    Self::ROW_BITS_LEN - Self::CHIP_BITS_LEN,
-                ) as usize;
+    pub fn available_column_choices(&self) -> [bool; Self::COLUMN_LEN] {
+        std::array::from_fn(|column| {
+            let chips = (self.columns >> (Self::ROW_BITS_LEN * column)) as usize;
+            let last_chip_in_row_mask = padded_mask(
+                Self::CHIP_BITS_LEN,
+                Self::ROW_BITS_LEN - Self::CHIP_BITS_LEN,
+            ) as usize;
 
-                chips & last_chip_in_row_mask == 0
-            })
-            .collect()
+            chips & last_chip_in_row_mask == 0
+        })
     }
 }
 
@@ -165,10 +165,7 @@ impl Display for Board {
 
 #[cfg(test)]
 mod test {
-    use crate::{
-        board::{mask, padded_mask},
-        Board, Chip,
-    };
+    use crate::board::{mask, padded_mask, Board, Chip};
 
     #[test]
     fn test_mask() {
@@ -219,6 +216,31 @@ mod test {
     }
 
     #[test]
+    fn swap_boawd() {
+        let mut board = Board::new();
+        let _ = board.place_chip(0, Chip::Red).unwrap();
+        let _ = board.place_chip(0, Chip::Red).unwrap();
+        let _ = board.place_chip(1, Chip::Red).unwrap();
+        let _ = board.place_chip(2, Chip::Red).unwrap();
+        let _ = board.place_chip(3, Chip::Red).unwrap();
+        assert!(board.available_column_choices().into_iter().all(|v| v));
+        let _ = board.place_chip(0, Chip::Red).unwrap();
+        let _ = board.place_chip(0, Chip::Red).unwrap();
+        let _ = board.place_chip(0, Chip::Red).unwrap();
+        let _ = board.place_chip(0, Chip::Red).unwrap();
+        let _ = board.place_chip(0, Chip::Red).unwrap_err();
+        let _ = board.place_chip(0, Chip::Red).unwrap_err();
+        assert_eq!(
+            board
+                .available_column_choices()
+                .into_iter()
+                .filter(|&v| v)
+                .count(),
+            6
+        );
+    }
+
+    #[test]
     fn available_choices() {
         let mut board = Board::new();
         let _ = board.place_chip(0, Chip::Red).unwrap();
@@ -226,13 +248,20 @@ mod test {
         let _ = board.place_chip(1, Chip::Red).unwrap();
         let _ = board.place_chip(2, Chip::Red).unwrap();
         let _ = board.place_chip(3, Chip::Red).unwrap();
-        assert_eq!(board.available_choices().len(), 7);
+        assert!(board.available_column_choices().into_iter().all(|v| v));
         let _ = board.place_chip(0, Chip::Red).unwrap();
         let _ = board.place_chip(0, Chip::Red).unwrap();
         let _ = board.place_chip(0, Chip::Red).unwrap();
         let _ = board.place_chip(0, Chip::Red).unwrap();
         let _ = board.place_chip(0, Chip::Red).unwrap_err();
         let _ = board.place_chip(0, Chip::Red).unwrap_err();
-        assert_eq!(board.available_choices().len(), 6);
+        assert_eq!(
+            board
+                .available_column_choices()
+                .into_iter()
+                .filter(|&v| v)
+                .count(),
+            6
+        );
     }
 }
