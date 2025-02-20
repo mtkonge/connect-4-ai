@@ -78,6 +78,16 @@ impl Board {
         }
     }
 
+    pub fn swap(&self) -> Self {
+        let mut result = Board::new();
+        for column in 0..Self::COLUMN_LEN {
+            let row = (self.columns >> (Board::ROW_BITS_LEN * column)) & mask(Self::ROW_BITS_LEN);
+            let rev = Self::COLUMN_LEN - 1 - column;
+            result.columns |= row << (Self::ROW_BITS_LEN * rev);
+        }
+        result
+    }
+
     pub fn tied(&self) -> bool {
         self.columns.count_ones() as usize == Self::COLUMN_LEN * Self::ROW_LEN
     }
@@ -188,6 +198,20 @@ mod test {
         assert_eq!(board.chip_at(2, 2), Some(Chip::Red));
         assert_eq!(board.chip_at(3, 4), Some(Chip::Yellow));
         assert_eq!(board.chip_at(4, 3), None);
+    }
+
+    #[test]
+    fn swap() {
+        let mut board = Board::new();
+        board.set_chip_at(2, 2, Chip::Red);
+        board.set_chip_at(3, 4, Chip::Yellow);
+        let board = board.swap();
+        let column_end_position = Board::COLUMN_LEN - 1;
+        assert_eq!(board.chip_at(column_end_position - 2, 2), Some(Chip::Red));
+        assert_eq!(
+            board.chip_at(column_end_position - 3, 4),
+            Some(Chip::Yellow)
+        );
     }
 
     #[test]

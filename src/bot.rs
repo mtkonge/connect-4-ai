@@ -104,8 +104,8 @@ pub struct Bot {
     memory: HashMap<Board, Weight>,
     played_choices: [Choice; Board::COLUMN_LEN * Board::ROW_LEN / 2],
     played_choices_len: usize,
-    weight_threshold: i32,
-    rand: usize,
+    pub exploration: i32,
+    seed: usize,
 }
 
 pub enum Action {
@@ -114,35 +114,56 @@ pub enum Action {
 }
 
 impl Bot {
-    pub fn new(choice_weight_threshold: i32) -> Self {
+    pub fn new(exploration: i32) -> Self {
         let played_choices: [Choice; Board::COLUMN_LEN * Board::ROW_LEN / 2] =
             std::array::from_fn(|_| Choice::blank());
         Self {
             memory: HashMap::new(),
             played_choices,
             played_choices_len: 0,
-            weight_threshold: choice_weight_threshold,
-            rand: 0,
+            exploration,
+            seed: 0x80085,
         }
+    }
+
+    fn lesson_severity_from_turn(base: u32, turn: usize) -> i32 {
+        let result = 0.02 * (turn as f64).powi(2) + base as f64;
+        result as i32
     }
 
     pub fn learn_from_played_choices(&mut self, action: Action) {
         for idx in 0..self.played_choices_len {
-            let played_choice = &mut self.played_choices[idx];
-
-            let weights = self
-                .memory
-                .entry(played_choice.board)
-                .or_insert(Weight([0; Board::COLUMN_LEN]));
-
-            let weight = &mut weights.0[played_choice.column];
-
+            let Choice { column, board } = self.played_choices[idx];
+            let (weights, swapped) = self.get_or_insert_memory_weights(board);
+            let column = if swapped {
+                Board::COLUMN_LEN - 1 - column
+            } else {
+                column
+            };
+            let weight = &mut weights.0[column];
             match action {
-                Action::Reward(amount) => *weight += amount as i32,
-                Action::Punish(amount) => *weight -= amount as i32,
+                Action::Reward(base) => *weight += Self::lesson_severity_from_turn(base, idx),
+                Action::Punish(base) => *weight -= Self::lesson_severity_from_turn(base, idx),
             };
         }
         self.played_choices_len = 0;
+    }
+
+    fn get_or_insert_memory_weights(&mut self, board: Board) -> (&mut Weight, bool) {
+        let (key, swapped) = if self.memory.contains_key(&board) {
+            (board, false)
+        } else if self.memory.contains_key(&board.swap()) {
+            (board.swap(), true)
+        } else {
+            self.memory.insert(board, Weight::blank());
+            (board, false)
+        };
+        (
+            self.memory
+                .get_mut(&key)
+                .expect("we just inserted or verified with contains_key"),
+            swapped,
+        )
     }
 
     pub fn remember_played_choice(&mut self, choice: Choice) {
@@ -151,14 +172,19 @@ impl Bot {
     }
 
     pub fn choose(&mut self, board: Board) -> Choice {
-        self.rand += 1;
-        let weights = self.memory.entry(board).or_insert(Weight::blank());
+        self.seed += 1;
 
+        let exploration = self.exploration;
+        let (weights, swapped) = self.get_or_insert_memory_weights(board);
+        let weights: Box<dyn Iterator<Item = i32>> = if swapped {
+            Box::new(weights.0.into_iter().rev())
+        } else {
+            Box::new(weights.0.into_iter())
+        };
         let available_choices = board.available_column_choices();
-
         let available_choices: Vec<_> = available_choices
             .into_iter()
-            .zip(weights.0.iter())
+            .zip(weights)
             .enumerate()
             .filter_map(|(col_idx, (is_available, weight))| {
                 if is_available {
@@ -169,15 +195,15 @@ impl Bot {
             })
             .collect();
 
-        let (_, &max_weight) = available_choices
+        let (_, max_weight) = available_choices
             .iter()
             .max_by(|(_, left), (_, right)| left.cmp(right))
             .expect("game is not tied");
 
         let mut available_choices: Vec<_> = available_choices
             .iter()
-            .filter_map(|(idx, &weight)| {
-                let within_threshold = weight >= max_weight - self.weight_threshold;
+            .filter_map(|(idx, weight)| {
+                let within_threshold = *weight >= max_weight - exploration;
                 if within_threshold {
                     Some(*idx)
                 } else {
@@ -186,7 +212,7 @@ impl Bot {
             })
             .collect();
 
-        let idx = self.rand % available_choices.len();
+        let idx = self.seed % available_choices.len();
         let column = available_choices.swap_remove(idx);
 
         Choice { board, column }
