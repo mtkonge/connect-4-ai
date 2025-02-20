@@ -97,7 +97,7 @@ impl Board {
             return None;
         }
 
-        let directions: [(isize, isize); 3] = [(1, 0), (0, 1), (1, 1)];
+        let directions: [(isize, isize); 4] = [(1, -1), (1, 0), (0, 1), (1, 1)];
 
         let player = self.chip_at(column, row)?;
 
@@ -262,6 +262,54 @@ mod test {
                 .count(),
             6
         );
+    }
+
+    #[test]
+    fn can_win_diagonally_ltr() {
+        let mut board = Board::new();
+
+        let _ = board.place_chip(0, Chip::Yellow).unwrap();
+
+        let _ = board.place_chip(1, Chip::Red).unwrap();
+        let _ = board.place_chip(1, Chip::Yellow).unwrap();
+
+        let _ = board.place_chip(2, Chip::Red).unwrap();
+        let _ = board.place_chip(2, Chip::Red).unwrap();
+        let _ = board.place_chip(2, Chip::Yellow).unwrap();
+
+        let _ = board.place_chip(3, Chip::Red).unwrap();
+        let _ = board.place_chip(3, Chip::Red).unwrap();
+        let _ = board.place_chip(3, Chip::Red).unwrap();
+        let _ = board.place_chip(3, Chip::Yellow).unwrap();
+
+        assert_eq!(board.winner(0, 0), Some(Chip::Yellow));
+        assert_eq!(board.winner(1, 1), Some(Chip::Yellow));
+        assert_eq!(board.winner(2, 2), Some(Chip::Yellow));
+        assert_eq!(board.winner(3, 3), Some(Chip::Yellow));
+    }
+
+    #[test]
+    fn can_win_diagonally_rtl() {
+        let mut board = Board::new();
+
+        let _ = board.place_chip(3, Chip::Yellow).unwrap();
+
+        let _ = board.place_chip(2, Chip::Red).unwrap();
+        let _ = board.place_chip(2, Chip::Yellow).unwrap();
+
+        let _ = board.place_chip(1, Chip::Red).unwrap();
+        let _ = board.place_chip(1, Chip::Red).unwrap();
+        let _ = board.place_chip(1, Chip::Yellow).unwrap();
+
+        let _ = board.place_chip(0, Chip::Red).unwrap();
+        let _ = board.place_chip(0, Chip::Red).unwrap();
+        let _ = board.place_chip(0, Chip::Red).unwrap();
+        let _ = board.place_chip(0, Chip::Yellow).unwrap();
+
+        assert_eq!(board.winner(3, 0), Some(Chip::Yellow));
+        assert_eq!(board.winner(2, 1), Some(Chip::Yellow));
+        assert_eq!(board.winner(1, 2), Some(Chip::Yellow));
+        assert_eq!(board.winner(0, 3), Some(Chip::Yellow));
     }
 
     #[test]
