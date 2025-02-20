@@ -7,7 +7,7 @@ mod board;
 mod bot;
 mod interactive;
 
-fn main() {
+fn player_vs_trained_bot() {
     let mut ties = 0;
     let mut red_wins = 0;
     let mut yellow_wins = 0;
@@ -44,4 +44,13 @@ fn main() {
     let game = InteractiveGame::new();
     red.exploration = 5;
     game.start_against_bot(red);
+}
+
+fn player_vs_minmax_bot() {
+    let game = InteractiveGame::new();
+    game.start_against_minmax();
+}
+
+fn main() {
+    player_vs_minmax_bot();
 }

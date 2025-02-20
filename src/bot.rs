@@ -90,7 +90,7 @@ impl<'bot> BotTrainer<'bot> {
                     };
                 }
             }
-            if self.board.tied() {
+            if self.board.board_filled() {
                 self.red_bot.learn_from_played_choices(Action::Punish(1));
                 self.yellow_bot.learn_from_played_choices(Action::Reward(1));
                 return GameResult::Tie;

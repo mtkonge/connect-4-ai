@@ -6,6 +6,15 @@ pub enum Chip {
     Yellow,
 }
 
+impl Chip {
+    const fn opposite(&self) -> Self {
+        match self {
+            Chip::Red => Chip::Yellow,
+            Chip::Yellow => Chip::Red,
+        }
+    }
+}
+
 #[repr(transparent)]
 #[derive(Debug, Eq, Clone, Copy, PartialEq, Hash)]
 pub struct Board {
@@ -40,6 +49,16 @@ const fn mask(count: usize) -> u128 {
         result = (result << 1) | 0b1;
         i += 1;
     }
+}
+
+struct Move {
+    column: usize,
+    row: usize,
+}
+
+pub enum Minmaxxing {
+    Result(i8),
+    Position(usize, i8),
 }
 
 impl Board {
@@ -88,7 +107,7 @@ impl Board {
         result
     }
 
-    pub fn tied(&self) -> bool {
+    pub fn board_filled(&self) -> bool {
         self.columns.count_ones() as usize == Self::COLUMN_LEN * Self::ROW_LEN
     }
 
@@ -146,6 +165,95 @@ impl Board {
 
             chips & last_chip_in_row_mask == 0
         })
+    }
+
+    pub fn minmax(&self, maximizer: Chip, turn: Chip) -> Minmaxxing {
+        const DEPTH: u8 = 3;
+
+        let children = self
+            .available_column_choices()
+            .into_iter()
+            .enumerate()
+            .filter_map(|(column, available)| if available { Some(column) } else { None })
+            .map(|column| {
+                let mut board = self.clone();
+                let row = board
+                    .place_chip(column, turn)
+                    .expect("making move based on available choices");
+                (Move { column, row }, board)
+            })
+            .map(|(pos, board)| {
+                (
+                    pos.column,
+                    board.minmax_inner(maximizer, turn.opposite(), pos, DEPTH),
+                )
+            })
+            .map(|(column, result)| match result {
+                Minmaxxing::Position(_, v) => (column, v.clamp(-1, 1)),
+                Minmaxxing::Result(v) => (column, v),
+            });
+
+        let chosen = if turn == maximizer {
+            children.max_by(|(_, left_score), (_, right_score)| left_score.cmp(&right_score))
+        } else {
+            children.min_by(|(_, left_score), (_, right_score)| left_score.cmp(&right_score))
+        };
+
+        chosen
+            .map(|(column, score)| Minmaxxing::Position(column, score))
+            .expect("game is not over")
+    }
+
+    fn minmax_inner(&self, maximizer: Chip, turn: Chip, pos: Move, depth: u8) -> Minmaxxing {
+        if depth == 0 {
+            // TODO: calculate value of board (-100 if enemy can win, 100 if i can win, otherwise,
+            // count the # + length of stripes on either side
+            // and do some fancy math
+            return Minmaxxing::Result(0);
+        }
+        if self.board_filled() {
+            return Minmaxxing::Result(0);
+        }
+        if let Some(winner) = self.winner(pos.column, pos.row) {
+            if maximizer == winner {
+                return Minmaxxing::Result(2);
+            } else {
+                return Minmaxxing::Result(-2);
+            }
+        }
+
+        let children = self
+            .available_column_choices()
+            .into_iter()
+            .enumerate()
+            .filter_map(|(column, available)| if available { Some(column) } else { None })
+            .map(|column| {
+                let mut board = self.clone();
+                let row = board
+                    .place_chip(column, turn)
+                    .expect("making move based on available choices");
+                (Move { column, row }, board)
+            })
+            .map(|(pos, board)| {
+                (
+                    pos.column,
+                    board.minmax_inner(maximizer, turn.opposite(), pos, depth - 1),
+                )
+            })
+            .map(|(column, result)| match result {
+                Minmaxxing::Position(_, v) => (column, v.clamp(-1, 1)),
+                Minmaxxing::Result(v) => (column, v),
+            });
+
+        let chosen = if turn == maximizer {
+            children.max_by(|(_, left_score), (_, right_score)| left_score.cmp(&right_score))
+        } else {
+            children.min_by(|(_, left_score), (_, right_score)| left_score.cmp(&right_score))
+        };
+
+        chosen
+            .map(|(column, score)| Minmaxxing::Position(column, score))
+            .expect("game is not over")
     }
 }
 
