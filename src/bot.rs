@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Instant};
 
 use crate::board::{Board, Chip};
 
@@ -27,75 +27,157 @@ impl Weight {
 }
 
 pub struct BotTrainer<'bot> {
-    board: Board,
-    turn: Chip,
-    moves: usize,
     red_bot: &'bot mut Bot,
     yellow_bot: &'bot mut Bot,
 }
 
-pub enum GameResult {
+pub struct MinMaxBotTrainer<'bot> {
+    bot: &'bot mut Bot,
+    bot_turn: Chip,
+}
+
+struct Game {
+    board: Board,
+    turn: Chip,
+}
+
+impl Game {
+    fn new() -> Self {
+        Self {
+            turn: Chip::Red,
+            board: Board::new(),
+        }
+    }
+
+    fn next_turn(&mut self) {
+        self.turn = self.turn.opposite()
+    }
+}
+
+enum GameResult {
     RedWon,
     YellowWon,
     Tie,
 }
 
-impl<'bot> BotTrainer<'bot> {
-    pub fn new(red_bot: &'bot mut Bot, yellow_bot: &'bot mut Bot) -> Self {
+impl<'bot> MinMaxBotTrainer<'bot> {
+    pub fn new(bot: &'bot mut Bot) -> Self {
         Self {
-            board: Board::new(),
-            turn: Chip::Red,
-            moves: 0,
-            red_bot,
-            yellow_bot,
+            bot,
+            bot_turn: Chip::Red,
         }
     }
 
-    fn next_turn(&mut self) {
-        self.turn = match self.turn {
-            Chip::Red => Chip::Yellow,
-            Chip::Yellow => Chip::Red,
-        }
-    }
-
-    pub fn start(mut self) -> GameResult {
+    fn start_match(&mut self, mut game: Game) -> GameResult {
         loop {
-            let player = match self.turn {
-                Chip::Red => &mut self.red_bot,
-                Chip::Yellow => &mut self.yellow_bot,
-            };
-            let choice = player.choose(self.board);
-            let column = choice.column;
-            player.remember_played_choice(choice);
+            let placed_column = if game.turn == self.bot_turn {
+                let choice = self.bot.choose(game.board);
+                let column = choice.column;
+                self.bot.remember_played_choice(choice);
 
-            let placed_row = match self.board.place_chip(column, self.turn) {
+                column
+            } else {
+                let column = match game.board.minmax(self.bot_turn.opposite(), game.turn) {
+                    crate::board::Minmaxxing::Result(_) => unreachable!("board is not filled"),
+                    crate::board::Minmaxxing::Position(position, _) => position,
+                };
+                column
+            };
+
+            let placed_row = match game.board.place_chip(placed_column, game.turn) {
                 Ok(v) => v,
                 Err(_) => {
                     unreachable!("our bot is perfect B)");
                 }
             };
-            self.moves += 1;
-            if self.moves > 6 {
-                if let Some(winner) = self.board.winner(column, placed_row) {
-                    debug_assert!(winner == self.turn);
-                    let (winner, loser) = match self.turn {
-                        Chip::Red => (&mut self.red_bot, &mut self.yellow_bot),
-                        Chip::Yellow => (&mut self.yellow_bot, &mut self.red_bot),
-                    };
-                    winner.learn_from_played_choices(Action::Reward(2));
-                    loser.learn_from_played_choices(Action::Punish(2));
-                    return match self.turn {
-                        Chip::Red => GameResult::RedWon,
-                        Chip::Yellow => GameResult::YellowWon,
-                    };
-                }
+
+            if let Some(winner) = game.board.winner(placed_column, placed_row) {
+                let action = if winner == self.bot_turn {
+                    Action::Reward(10)
+                } else {
+                    Action::Punish(10)
+                };
+                self.bot.learn_from_played_choices(action);
+                break match winner {
+                    Chip::Red => GameResult::RedWon,
+                    Chip::Yellow => GameResult::YellowWon,
+                };
+            } else if game.board.board_filled() {
+                let action = if self.bot_turn == Chip::Red {
+                    Action::Punish(1)
+                } else {
+                    Action::Reward(1)
+                };
+                self.bot.learn_from_played_choices(action);
+                break GameResult::Tie;
+            };
+            game.next_turn();
+        }
+    }
+
+    pub fn start_with_iterations(mut self, iterations: usize) {
+        for iteration in 1..=iterations {
+            if iteration % (iterations / 10) == 0 {
+                println!("{}%", (iteration * 100) / iterations);
             }
-            if self.board.board_filled() {
+            self.start_match(Game::new());
+            self.bot_turn = self.bot_turn.opposite();
+        }
+    }
+}
+
+impl<'bot> BotTrainer<'bot> {
+    pub fn new(red_bot: &'bot mut Bot, yellow_bot: &'bot mut Bot) -> Self {
+        Self {
+            red_bot,
+            yellow_bot,
+        }
+    }
+
+    fn start_match(&mut self, mut game: Game) -> GameResult {
+        loop {
+            let player = match game.turn {
+                Chip::Red => &mut self.red_bot,
+                Chip::Yellow => &mut self.yellow_bot,
+            };
+            let choice = player.choose(game.board);
+            let column = choice.column;
+            player.remember_played_choice(choice);
+
+            let placed_row = match game.board.place_chip(column, game.turn) {
+                Ok(v) => v,
+                Err(_) => {
+                    unreachable!("our bot is perfect B)");
+                }
+            };
+            if let Some(winner) = game.board.winner(column, placed_row) {
+                debug_assert!(winner == game.turn);
+                let (winner, loser) = match game.turn {
+                    Chip::Red => (&mut self.red_bot, &mut self.yellow_bot),
+                    Chip::Yellow => (&mut self.yellow_bot, &mut self.red_bot),
+                };
+                winner.learn_from_played_choices(Action::Reward(10));
+                loser.learn_from_played_choices(Action::Punish(10));
+                break match game.turn {
+                    Chip::Red => GameResult::RedWon,
+                    Chip::Yellow => GameResult::YellowWon,
+                };
+            } else if game.board.board_filled() {
                 self.red_bot.learn_from_played_choices(Action::Punish(1));
                 self.yellow_bot.learn_from_played_choices(Action::Reward(1));
-                return GameResult::Tie;
+                break GameResult::Tie;
             }
-            self.next_turn();
+            game.next_turn();
+        }
+    }
+
+    pub fn start_with_iterations(mut self, iterations: usize) {
+        for iteration in 1..=iterations {
+            if iteration % (iterations / 5) == 0 {
+                println!("{}%", iteration / iterations);
+            }
+            self.start_match(Game::new());
+            std::mem::swap(self.red_bot, self.yellow_bot);
         }
     }
 }

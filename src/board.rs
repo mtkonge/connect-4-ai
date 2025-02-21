@@ -7,7 +7,7 @@ pub enum Chip {
 }
 
 impl Chip {
-    const fn opposite(&self) -> Self {
+    pub const fn opposite(&self) -> Self {
         match self {
             Chip::Red => Chip::Yellow,
             Chip::Yellow => Chip::Red,
@@ -168,7 +168,7 @@ impl Board {
     }
 
     pub fn minmax(&self, maximizer: Chip, turn: Chip) -> Minmaxxing {
-        const DEPTH: u8 = 3;
+        const DEPTH: u8 = 4;
 
         let children = self
             .available_column_choices()
