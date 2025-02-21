@@ -322,7 +322,7 @@ impl<'bot> BotTrainer<'bot> {
     pub fn start_with_iterations(mut self, iterations: usize) {
         for iteration in 1..=iterations {
             if iteration % (iterations / 5) == 0 {
-                println!("{}%", iteration / iterations);
+                println!("{}%", (iteration * 100) / iterations);
             }
             self.start_match(Game::new());
             std::mem::swap(self.red_bot, self.yellow_bot);

@@ -43,5 +43,5 @@ fn player_vs_minmax_bot() {
 }
 
 fn main() {
-    player_vs_gladiator()
+    player_vs_trained_bot()
 }
