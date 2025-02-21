@@ -107,6 +107,14 @@ impl Board {
         result
     }
 
+    pub const fn as_u128(&self) -> u128 {
+        self.columns
+    }
+
+    pub const fn from_u128(value: u128) -> Self {
+        Self { columns: value }
+    }
+
     pub fn filled(&self) -> bool {
         self.columns.count_ones() as usize == Self::COLUMN_LEN * Self::ROW_LEN
     }

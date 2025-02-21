@@ -18,12 +18,17 @@ impl Choice {
     }
 }
 
+#[derive(Debug, PartialEq)]
 #[repr(transparent)]
 struct Weight([i32; Board::COLUMN_LEN]);
 
 impl Weight {
     pub fn blank() -> Self {
         Self([0; Board::COLUMN_LEN])
+    }
+
+    pub const fn from_weights(list: [i32; Board::COLUMN_LEN]) -> Self {
+        Self(list)
     }
 }
 
@@ -485,5 +490,115 @@ impl Bot {
         let column = available_choices.swap_remove(idx);
 
         Choice { board, column }
+    }
+}
+
+const fn serialize_weights(
+    board: &Board,
+    weight: &Weight,
+) -> [u8; std::mem::size_of::<Board>() + std::mem::size_of::<Weight>()] {
+    let mut result = [0; std::mem::size_of::<Board>() + std::mem::size_of::<Weight>()];
+    let mut result_idx = 0;
+    let bytes = board.as_u128().to_le_bytes();
+    let mut byte_idx = 0;
+    loop {
+        result[result_idx] = bytes[byte_idx];
+        byte_idx += 1;
+        result_idx += 1;
+        if byte_idx == bytes.len() {
+            break;
+        }
+    }
+
+    let weight = weight.0;
+    let mut weight_idx = 0;
+    loop {
+        let bytes = weight[weight_idx].to_le_bytes();
+        let mut byte_idx = 0;
+        loop {
+            result[result_idx] = bytes[byte_idx];
+            result_idx += 1;
+            byte_idx += 1;
+            if byte_idx == bytes.len() {
+                break;
+            }
+        }
+        weight_idx += 1;
+        if weight_idx == weight.len() {
+            break;
+        }
+    }
+
+    result
+}
+
+const fn deserialize_weights(
+    bytes: [u8; std::mem::size_of::<Board>() + std::mem::size_of::<Weight>()],
+) -> (Board, Weight) {
+    let mut byte_idx = 0;
+
+    let board = {
+        let mut board = [0; std::mem::size_of::<Board>()];
+        let mut result_idx = 0;
+        loop {
+            board[result_idx] = bytes[byte_idx];
+            byte_idx += 1;
+            result_idx += 1;
+            if result_idx == board.len() {
+                break;
+            }
+        }
+        Board::from_u128(u128::from_le_bytes(board))
+    };
+
+    let weight = {
+        let mut weight_bytes = [[0; std::mem::size_of::<i32>()]; Board::COLUMN_LEN];
+        let mut weight_idx = 0;
+        loop {
+            let mut weight_byte_idx = 0;
+            loop {
+                weight_bytes[weight_idx][weight_byte_idx] = bytes[byte_idx];
+                byte_idx += 1;
+                weight_byte_idx += 1;
+                if weight_byte_idx == weight_bytes[weight_idx].len() {
+                    break;
+                }
+            }
+            weight_idx += 1;
+            if weight_idx == weight_bytes.len() {
+                break;
+            }
+        }
+        let mut weight_idx = 0;
+        let mut weight = [0; Board::COLUMN_LEN];
+        loop {
+            weight[weight_idx] = i32::from_le_bytes(weight_bytes[weight_idx]);
+            weight_idx += 1;
+            if weight_idx == weight.len() {
+                break;
+            }
+        }
+        Weight::from_weights(weight)
+    };
+
+    (board, weight)
+}
+
+#[cfg(test)]
+mod test {
+    use crate::board::Board;
+
+    use super::{deserialize_weights, serialize_weights, Weight};
+
+    #[test]
+    fn serde() {
+        let board = Board::from_u128(0x12841928129481294);
+        let weights = Weight::from_weights([
+            0x2813213, 0x2318921, 0x2183931, 0x2183931, 0x821931, 0x82194, 0x2148112,
+        ]);
+
+        let result = deserialize_weights(serialize_weights(&board, &weights));
+
+        assert_eq!((board, weights), result);
     }
 }
