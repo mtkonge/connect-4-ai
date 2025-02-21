@@ -90,7 +90,7 @@ impl InteractiveGame {
                     break;
                 }
             }
-            if self.board.board_filled() {
+            if self.board.filled() {
                 println!("Tied!");
                 break;
             }
@@ -156,7 +156,7 @@ impl InteractiveGame {
                     break;
                 }
             }
-            if self.board.board_filled() {
+            if self.board.filled() {
                 println!("Tied!");
                 break;
             }
@@ -207,7 +207,7 @@ impl InteractiveGame {
                     break;
                 }
             }
-            if self.board.board_filled() {
+            if self.board.filled() {
                 println!("tie");
                 break;
             }

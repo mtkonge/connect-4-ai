@@ -107,7 +107,7 @@ impl Board {
         result
     }
 
-    pub fn board_filled(&self) -> bool {
+    pub fn filled(&self) -> bool {
         self.columns.count_ones() as usize == Self::COLUMN_LEN * Self::ROW_LEN
     }
 
@@ -209,7 +209,7 @@ impl Board {
     }
 
     fn minmax_after_move(&self, maximizer: Chip, turn: Chip, pos: Move, depth: u8) -> Minmaxxing {
-        if self.board_filled() {
+        if self.filled() {
             return Minmaxxing::Result(0);
         }
         if let Some(winner) = self.winner(pos.column, pos.row) {

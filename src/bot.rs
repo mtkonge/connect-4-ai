@@ -1,4 +1,4 @@
-use std::{collections::HashMap, time::Instant};
+use std::collections::HashMap;
 
 use crate::board::{Board, Chip};
 
@@ -36,6 +36,117 @@ pub struct MinMaxBotTrainer<'bot> {
     bot_turn: Chip,
 }
 
+struct GladiatorGame {
+    red_bot: Bot,
+    yellow_bot: Bot,
+    game: Game,
+    statistics: GameStatistics,
+}
+
+struct GameStatistics {
+    red_wins: usize,
+    yellow_wins: usize,
+    ties: usize,
+}
+
+impl GameStatistics {
+    pub fn new() -> Self {
+        Self {
+            red_wins: 0,
+            yellow_wins: 0,
+            ties: 0,
+        }
+    }
+}
+
+impl GladiatorGame {
+    pub fn new(rand: &mut Rand) -> Self {
+        let red_bot = Bot::new(5, rand.next());
+        let yellow_bot = Bot::new(5, rand.next());
+        let game = Game::new();
+        let statistics = GameStatistics::new();
+        Self {
+            red_bot,
+            yellow_bot,
+            game,
+            statistics,
+        }
+    }
+
+    pub fn new_from_bots(red_bot: Bot, yellow_bot: Bot) -> Self {
+        let game = Game::new();
+        let statistics = GameStatistics::new();
+        Self {
+            red_bot,
+            yellow_bot,
+            game,
+            statistics,
+        }
+    }
+
+    pub fn evaluate(mut self, iterations: usize) -> Bot {
+        for _ in 0..iterations {
+            let result = loop {
+                let player = match self.game.turn {
+                    Chip::Red => &mut self.red_bot,
+                    Chip::Yellow => &mut self.yellow_bot,
+                };
+
+                let choice = player.choose(self.game.board);
+                let column_played = choice.column;
+                let row_played = self
+                    .game
+                    .board
+                    .place_chip(column_played, self.game.turn)
+                    .expect("we only place based on available positions");
+                if self.game.board.winner(column_played, row_played).is_some() {
+                    break match self.game.turn {
+                        Chip::Red => GameResult::RedWon,
+                        Chip::Yellow => GameResult::YellowWon,
+                    };
+                } else if self.game.board.filled() {
+                    break GameResult::Tie;
+                }
+                self.game.next_turn();
+            };
+
+            let (red, yellow) = match result {
+                GameResult::RedWon => {
+                    self.statistics.red_wins += 1;
+                    (Action::Reward(10), Action::Punish(10))
+                }
+                GameResult::YellowWon => {
+                    self.statistics.yellow_wins += 1;
+                    (Action::Punish(10), Action::Reward(10))
+                }
+                GameResult::Tie => {
+                    self.statistics.ties += 1;
+                    (Action::Punish(1), Action::Reward(1))
+                }
+            };
+            self.red_bot.learn_from_played_choices(red);
+            self.yellow_bot.learn_from_played_choices(yellow);
+
+            std::mem::swap(&mut self.red_bot, &mut self.yellow_bot);
+            std::mem::swap(
+                &mut self.statistics.red_wins,
+                &mut self.statistics.yellow_wins,
+            );
+            self.game = Game::new();
+        }
+        if self.statistics.red_wins > self.statistics.yellow_wins {
+            self.red_bot
+        } else {
+            self.yellow_bot
+        }
+    }
+}
+
+pub struct GladiatorBotTrainer {
+    fights: Vec<GladiatorGame>,
+    remainder: Option<Bot>,
+}
+
 struct Game {
     board: Board,
     turn: Chip,
@@ -58,6 +169,42 @@ enum GameResult {
     RedWon,
     YellowWon,
     Tie,
+}
+
+impl GladiatorBotTrainer {
+    pub fn new(arena_size: usize) -> Self {
+        let mut rand = Rand::new(0x40523);
+        let fights = Vec::from_iter((0..arena_size).map(|_| GladiatorGame::new(&mut rand)));
+        Self {
+            fights,
+            remainder: None,
+        }
+    }
+
+    pub fn the_one_bot_to_rule_them_all(mut self, iterations: usize) -> Bot {
+        loop {
+            println!("evaluating {} fights...", self.fights.len());
+            let mut games = Vec::with_capacity(self.fights.len() / 2);
+            std::mem::swap(&mut games, &mut self.fights);
+            let mut winners = games.into_iter().map(|v| v.evaluate(iterations));
+            loop {
+                let Some(current) = winners.next() else {
+                    break;
+                };
+                let Some(partner) = winners.next() else {
+                    self.remainder = Some(current);
+                    break;
+                };
+                self.fights
+                    .push(GladiatorGame::new_from_bots(current, partner));
+            }
+            if self.fights.len() == 0 {
+                break self
+                    .remainder
+                    .expect("there can only be one bot left if arena_size > 0");
+            }
+        }
+    }
 }
 
 impl<'bot> MinMaxBotTrainer<'bot> {
@@ -102,7 +249,7 @@ impl<'bot> MinMaxBotTrainer<'bot> {
                     Chip::Red => GameResult::RedWon,
                     Chip::Yellow => GameResult::YellowWon,
                 };
-            } else if game.board.board_filled() {
+            } else if game.board.filled() {
                 let action = if self.bot_turn == Chip::Red {
                     Action::Punish(1)
                 } else {
@@ -162,7 +309,7 @@ impl<'bot> BotTrainer<'bot> {
                     Chip::Red => GameResult::RedWon,
                     Chip::Yellow => GameResult::YellowWon,
                 };
-            } else if game.board.board_filled() {
+            } else if game.board.filled() {
                 self.red_bot.learn_from_played_choices(Action::Punish(1));
                 self.yellow_bot.learn_from_played_choices(Action::Reward(1));
                 break GameResult::Tie;
@@ -182,12 +329,30 @@ impl<'bot> BotTrainer<'bot> {
     }
 }
 
+/// https://en.wikipedia.org/wiki/Linear_congruential_generator
+struct Rand(usize);
+
+impl Rand {
+    pub const MODULUS: usize = 2_usize.pow(31);
+    pub const MULTIPLIER: usize = 1103515245;
+    pub const INCREMENT: usize = 12345;
+
+    pub const fn new(seed: usize) -> Self {
+        Self(seed)
+    }
+
+    pub fn next(&mut self) -> usize {
+        self.0 = (Self::MULTIPLIER * self.0 + Self::INCREMENT) % Self::MODULUS;
+        self.0
+    }
+}
+
 pub struct Bot {
     memory: HashMap<Board, Weight>,
     played_choices: [Choice; Board::COLUMN_LEN * Board::ROW_LEN / 2],
     played_choices_len: usize,
     pub exploration: i32,
-    seed: usize,
+    rand: Rand,
 }
 
 pub enum Action {
@@ -196,7 +361,7 @@ pub enum Action {
 }
 
 impl Bot {
-    pub fn new(exploration: i32) -> Self {
+    pub fn new(exploration: i32, seed: usize) -> Self {
         let played_choices: [Choice; Board::COLUMN_LEN * Board::ROW_LEN / 2] =
             std::array::from_fn(|_| Choice::blank());
         Self {
@@ -204,7 +369,7 @@ impl Bot {
             played_choices,
             played_choices_len: 0,
             exploration,
-            seed: 0x80085,
+            rand: Rand::new(seed),
         }
     }
 
@@ -254,8 +419,6 @@ impl Bot {
     }
 
     pub fn choose(&mut self, board: Board) -> Choice {
-        self.seed += 1;
-
         let exploration = self.exploration;
         let (weights, swapped) = self.get_or_insert_memory_weights(board);
         let weights: Box<dyn Iterator<Item = i32>> = if swapped {
@@ -294,7 +457,7 @@ impl Bot {
             })
             .collect();
 
-        let idx = self.seed % available_choices.len();
+        let idx = self.rand.next() % available_choices.len();
         let column = available_choices.swap_remove(idx);
 
         Choice { board, column }
