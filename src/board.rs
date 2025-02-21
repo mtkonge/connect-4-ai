@@ -294,7 +294,7 @@ impl Board {
             });
 
         let chosen = if turn == maximizer {
-            children.min_by(|(_, left_score), (_, right_score)| left_score.cmp(&right_score))
+            children.max_by(|(_, left_score), (_, right_score)| left_score.cmp(&right_score))
         } else {
             children.min_by(|(_, left_score), (_, right_score)| left_score.cmp(&right_score))
         };
