@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use bot::{Bot, BotTrainer, MinMaxBotTrainer};
 use interactive::InteractiveGame;
 
@@ -36,5 +34,5 @@ fn player_vs_minmax_bot() {
 }
 
 fn main() {
-    player_vs_trained_minmax_bot()
+    player_vs_minmax_bot()
 }
