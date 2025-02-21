@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::collections::HashMap;
 
 use crate::board::{Board, Chip};
@@ -373,14 +374,19 @@ impl Bot {
         }
     }
 
-    fn lesson_severity_from_turn(base: u32, turn: usize) -> i32 {
-        let result = 0.02 * (turn as f64).powi(2) + base as f64;
+    fn lesson_severity_from_turn(&self, turn: usize) -> i32 {
+        let last_turn = self.played_choices_len - 1;
+        if turn == last_turn {
+            return i32::MAX;
+        }
+        let result = 0.02 * (turn as f64).powi(2);
         result as i32
     }
 
     pub fn learn_from_played_choices(&mut self, action: Action) {
         for idx in 0..self.played_choices_len {
             let Choice { column, board } = self.played_choices[idx];
+            let lesson_severity = self.lesson_severity_from_turn(idx);
             let (weights, swapped) = self.get_or_insert_memory_weights(board);
             let column = if swapped {
                 Board::COLUMN_LEN - 1 - column
@@ -388,9 +394,24 @@ impl Bot {
                 column
             };
             let weight = &mut weights.0[column];
+            if *weight == i32::MAX || *weight == i32::MIN {
+                continue;
+            }
             match action {
-                Action::Reward(base) => *weight += Self::lesson_severity_from_turn(base, idx),
-                Action::Punish(base) => *weight -= Self::lesson_severity_from_turn(base, idx),
+                Action::Reward(base) => {
+                    if lesson_severity == i32::MAX {
+                        *weight = i32::MAX
+                    } else {
+                        *weight += lesson_severity + base as i32
+                    }
+                }
+                Action::Punish(base) => {
+                    if lesson_severity == i32::MAX {
+                        *weight = i32::MIN
+                    } else {
+                        *weight -= lesson_severity + base as i32
+                    }
+                }
             };
         }
         self.played_choices_len = 0;
@@ -448,6 +469,9 @@ impl Bot {
         let mut available_choices: Vec<_> = available_choices
             .iter()
             .filter_map(|(idx, weight)| {
+                if *max_weight == i32::MIN {
+                    return Some(*idx);
+                }
                 let within_threshold = *weight >= max_weight - exploration;
                 if within_threshold {
                     Some(*idx)
