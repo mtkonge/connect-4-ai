@@ -97,7 +97,7 @@ impl InteractiveGame {
         }
     }
 
-    pub fn start_against_bot(mut self, mut bot: Bot) {
+    pub fn start_against_bot(mut self, bot: &mut Bot) {
         println!("{}", self.board);
 
         loop {

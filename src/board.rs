@@ -229,20 +229,25 @@ impl Board {
         }
 
         if depth == 0 {
-            let mut value = 0;
-            for col in 0..Self::COLUMN_LEN {
-                for row in 0..Self::ROW_LEN {
-                    match self.win_possibilities_at_position(col, row) {
-                        Some((chip, points)) if chip == maximizer => value += points,
-                        Some((_chip, points)) => value -= points,
-                        None => continue,
-                    }
-                }
-            }
-            return Minmaxxing::Result(value);
+            let value = self.value_of_board(maximizer);
+            return Minmaxxing::Result(value * 8);
         }
 
         self.minmax_children(maximizer, turn, depth - 1)
+    }
+
+    pub fn value_of_board(&self, maximizer: Chip) -> i16 {
+        let mut value = 0;
+        for col in 0..Self::COLUMN_LEN {
+            for row in 0..Self::ROW_LEN {
+                match self.win_possibilities_at_position(col, row) {
+                    Some((chip, points)) if chip == maximizer => value += points,
+                    Some((_chip, points)) => value -= points,
+                    None => continue,
+                }
+            }
+        }
+        value
     }
 
     fn win_possibilities_at_position(&self, column: usize, row: usize) -> Option<(Chip, i16)> {
@@ -258,11 +263,12 @@ impl Board {
             .iter()
             .map(|(column_dir, row_dir)| {
                 (0..=3)
-                    .map(|min| {
-                        (min - 3..=min).all(|max| {
+                    .map(|idx| (idx - 3..=idx))
+                    .map(|mut stripe| {
+                        stripe.all(|idx| {
                             let (column, row) = (
-                                column as isize + column_dir * max,
-                                row as isize + row_dir * max,
+                                column as isize + column_dir * idx,
+                                row as isize + row_dir * idx,
                             );
                             if !(0..Self::COLUMN_LEN as isize).contains(&column)
                                 || !(0..Self::ROW_LEN as isize).contains(&row)
@@ -278,8 +284,8 @@ impl Board {
                             }
                         })
                     })
+                    .filter(|&available| available)
                     .count() as i16
-                    * 2
             })
             .sum();
 
@@ -298,8 +304,8 @@ impl Display for Board {
             let mut rows: [_; Self::ROW_LEN] = std::array::from_fn(|row| {
                 let columns: [_; Self::COLUMN_LEN] =
                     std::array::from_fn(|column| match self.chip_at(column, row) {
-                        Some(Chip::Red) => "\x1b[0;31mO\x1b[0m",
-                        Some(Chip::Yellow) => "\x1b[0;33mO\x1b[0m",
+                        Some(Chip::Red) => "\x1b[0;31m0\x1b[0m",
+                        Some(Chip::Yellow) => "\x1b[0;33m0\x1b[0m",
                         None => " ",
                     });
                 format!("|{}|", columns.join("|"))
@@ -473,5 +479,19 @@ mod test {
                 .count(),
             6
         );
+    }
+
+    #[test]
+    fn win_possibilities_at_position() {
+        // (&self, column: usize, row: usize)
+        let mut board = Board::new();
+
+        let _ = board.place_chip(0, Chip::Yellow).unwrap();
+        let _ = board.place_chip(1, Chip::Yellow).unwrap();
+        let _ = board.place_chip(2, Chip::Yellow).unwrap();
+        assert_eq!(
+            board.win_possibilities_at_position(2, 0),
+            Some((Chip::Yellow, 5))
+        )
     }
 }

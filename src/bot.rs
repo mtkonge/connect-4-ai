@@ -32,7 +32,12 @@ impl Weight {
     }
 }
 
-pub struct BotTrainer<'bot> {
+pub struct BotTrainerGameResult<'bot> {
+    red_bot: &'bot mut Bot,
+    yellow_bot: &'bot mut Bot,
+}
+
+pub struct BotTrainerBoardPosition<'bot> {
     red_bot: &'bot mut Bot,
     yellow_bot: &'bot mut Bot,
 }
@@ -153,20 +158,20 @@ pub struct GladiatorBotTrainer {
     remainder: Option<Bot>,
 }
 
-struct Game {
-    board: Board,
-    turn: Chip,
+pub struct Game {
+    pub board: Board,
+    pub turn: Chip,
 }
 
 impl Game {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             turn: Chip::Red,
             board: Board::new(),
         }
     }
 
-    fn next_turn(&mut self) {
+    pub fn next_turn(&mut self) {
         self.turn = self.turn.opposite()
     }
 }
@@ -279,7 +284,61 @@ impl<'bot> MinMaxBotTrainer<'bot> {
     }
 }
 
-impl<'bot> BotTrainer<'bot> {
+impl<'bot> BotTrainerBoardPosition<'bot> {
+    pub fn new(red_bot: &'bot mut Bot, yellow_bot: &'bot mut Bot) -> Self {
+        Self {
+            red_bot,
+            yellow_bot,
+        }
+    }
+
+    fn start_match(&mut self, mut game: Game) -> GameResult {
+        loop {
+            let player = match game.turn {
+                Chip::Red => &mut self.red_bot,
+                Chip::Yellow => &mut self.yellow_bot,
+            };
+            let choice = player.choose(game.board);
+            let column = choice.column;
+            player.remember_played_choice(choice);
+
+            let placed_row = match game.board.place_chip(column, game.turn) {
+                Ok(v) => v,
+                Err(_) => {
+                    unreachable!("our bot is perfect B)");
+                }
+            };
+            if let Some(winner) = game.board.winner(column, placed_row) {
+                debug_assert!(winner == game.turn);
+                let game_result = match game.turn {
+                    Chip::Red => GameResult::RedWon,
+                    Chip::Yellow => GameResult::YellowWon,
+                };
+                self.red_bot.learn_from_board(Chip::Red, &game_result);
+                self.yellow_bot.learn_from_board(Chip::Yellow, &game_result);
+                break game_result;
+            } else if game.board.filled() {
+                let game_result = GameResult::Tie;
+                self.red_bot.learn_from_board(Chip::Red, &game_result);
+                self.yellow_bot.learn_from_board(Chip::Yellow, &game_result);
+                break game_result;
+            }
+            game.next_turn();
+        }
+    }
+
+    pub fn start_with_iterations(mut self, iterations: usize) {
+        for iteration in 1..=iterations {
+            if iteration % (iterations / 5) == 0 {
+                println!("{}%", (iteration * 100) / iterations);
+            }
+            self.start_match(Game::new());
+            std::mem::swap(self.red_bot, self.yellow_bot);
+        }
+    }
+}
+
+impl<'bot> BotTrainerGameResult<'bot> {
     pub fn new(red_bot: &'bot mut Bot, yellow_bot: &'bot mut Bot) -> Self {
         Self {
             red_bot,
@@ -386,6 +445,45 @@ impl Bot {
         }
         let result = 0.02 * (turn as f64).powi(2);
         result as i32
+    }
+
+    fn learn_from_board(&mut self, bot_chip: Chip, game_result: &GameResult) {
+        for idx in 0..self.played_choices_len {
+            let last_turn = self.played_choices_len - 1;
+            let Choice { column, mut board } = self.played_choices[idx];
+            let (weights, swapped) = self.get_or_insert_memory_weights(board);
+            let column = if swapped {
+                Board::COLUMN_LEN - 1 - column
+            } else {
+                column
+            };
+
+            board
+                .place_chip(column, bot_chip)
+                .expect("Unreachable: Our bot is perfect B)");
+
+            let weight = &mut weights.0[column];
+            if *weight == i32::MAX || *weight == i32::MIN {
+                continue;
+            }
+            if idx == last_turn {
+                match game_result {
+                    GameResult::RedWon => match bot_chip {
+                        Chip::Red => *weight = i32::MAX,
+                        Chip::Yellow => *weight = i32::MIN,
+                    },
+                    GameResult::YellowWon => match bot_chip {
+                        Chip::Red => *weight = i32::MIN,
+                        Chip::Yellow => *weight = i32::MAX,
+                    },
+                    GameResult::Tie => (),
+                }
+                continue;
+            }
+            *weight += board.value_of_board(bot_chip) as i32;
+        }
+
+        self.played_choices_len = 0
     }
 
     pub fn learn_from_played_choices(&mut self, action: Action) {
