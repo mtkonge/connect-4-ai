@@ -613,36 +613,39 @@ impl Bot {
     }
 }
 
+const fn copy_from_to<const SRC_LEN: usize, const DEST_LEN: usize>(
+    (src, src_idx): (&[u8; SRC_LEN], &mut usize),
+    (dest, dest_idx): (&mut [u8; DEST_LEN], &mut usize),
+) {
+    loop {
+        dest[*dest_idx] = src[*src_idx];
+        *src_idx += 1;
+        *dest_idx += 1;
+        if *dest_idx == DEST_LEN || *src_idx == SRC_LEN {
+            break;
+        }
+    }
+}
+
 const fn serialize_weights(
     board: &Board,
     weight: &Weight,
 ) -> [u8; std::mem::size_of::<Board>() + std::mem::size_of::<Weight>()] {
     let mut result = [0; std::mem::size_of::<Board>() + std::mem::size_of::<Weight>()];
     let mut result_idx = 0;
-    let bytes = board.as_u128().to_le_bytes();
-    let mut byte_idx = 0;
-    loop {
-        result[result_idx] = bytes[byte_idx];
-        byte_idx += 1;
-        result_idx += 1;
-        if byte_idx == bytes.len() {
-            break;
-        }
-    }
+    {
+        let (left, right) = board.as_pair();
+        let (left, right) = (left.to_le_bytes(), right.to_le_bytes());
+
+        copy_from_to((&left, &mut 0), (&mut result, &mut result_idx));
+        copy_from_to((&right, &mut 0), (&mut result, &mut result_idx));
+    };
 
     let weight = weight.0;
     let mut weight_idx = 0;
     loop {
         let bytes = weight[weight_idx].to_le_bytes();
-        let mut byte_idx = 0;
-        loop {
-            result[result_idx] = bytes[byte_idx];
-            result_idx += 1;
-            byte_idx += 1;
-            if byte_idx == bytes.len() {
-                break;
-            }
-        }
+        copy_from_to((&bytes, &mut 0), (&mut result, &mut result_idx));
         weight_idx += 1;
         if weight_idx == weight.len() {
             break;
@@ -658,32 +661,21 @@ const fn deserialize_weights(
     let mut byte_idx = 0;
 
     let board = {
-        let mut board = [0; std::mem::size_of::<Board>()];
-        let mut result_idx = 0;
-        loop {
-            board[result_idx] = bytes[byte_idx];
-            byte_idx += 1;
-            result_idx += 1;
-            if result_idx == board.len() {
-                break;
-            }
-        }
-        Board::from_u128(u128::from_le_bytes(board))
+        let mut left = [0; std::mem::size_of::<u64>()];
+        copy_from_to((&bytes, &mut byte_idx), (&mut left, &mut 0));
+        let mut right = [0; std::mem::size_of::<u32>()];
+        copy_from_to((&bytes, &mut byte_idx), (&mut right, &mut 0));
+        Board::from_pair((u64::from_le_bytes(left), u32::from_le_bytes(right)))
     };
 
     let weight = {
         let mut weight_bytes = [[0; std::mem::size_of::<i16>()]; Board::COLUMN_LEN];
         let mut weight_idx = 0;
         loop {
-            let mut weight_byte_idx = 0;
-            loop {
-                weight_bytes[weight_idx][weight_byte_idx] = bytes[byte_idx];
-                byte_idx += 1;
-                weight_byte_idx += 1;
-                if weight_byte_idx == weight_bytes[weight_idx].len() {
-                    break;
-                }
-            }
+            copy_from_to(
+                (&bytes, &mut byte_idx),
+                (&mut weight_bytes[weight_idx], &mut 0),
+            );
             weight_idx += 1;
             if weight_idx == weight_bytes.len() {
                 break;
@@ -712,7 +704,7 @@ mod test {
 
     #[test]
     fn serde() {
-        let board = Board::from_u128(0x12841928129481294);
+        let board = Board::from_pair((0x5823847547321748, 0x42348245));
         let weights =
             Weight::from_weights([0x2813, 0x2891, 0x3931, 0x3931, 0x5219, 0x4294, 0x2148]);
 

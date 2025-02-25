@@ -18,7 +18,7 @@ impl Chip {
 #[repr(transparent)]
 #[derive(Debug, Eq, Clone, Copy, PartialEq, Hash)]
 pub struct Board {
-    columns: u128,
+    column_pair: (u64, u32),
 }
 
 #[derive(Debug)]
@@ -69,14 +69,17 @@ impl Board {
     const CHIP_BITS_LEN: usize = 2;
 
     pub fn new() -> Self {
-        Self { columns: 0 }
+        Self {
+            column_pair: (0, 0),
+        }
     }
 
     pub fn place_chip(&mut self, column: usize, chip: Chip) -> Result<usize, PlaceChipError> {
         if column >= Self::COLUMN_LEN {
             return Err(PlaceChipError::InvalidColumn);
         }
-        let chips = ((self.columns) >> (Self::ROW_BITS_LEN * column)) & mask(Self::ROW_BITS_LEN);
+        let columns = self.as_u128();
+        let chips = (columns >> (Self::ROW_BITS_LEN * column)) & mask(Self::ROW_BITS_LEN);
         let chips_placed = chips.count_ones() as usize;
         if chips_placed >= Self::ROW_LEN {
             return Err(PlaceChipError::ColumnOccupied);
@@ -87,7 +90,8 @@ impl Board {
     }
 
     fn chip_at(&self, column: usize, row: usize) -> Option<Chip> {
-        let chips = ((self.columns) >> (Self::ROW_BITS_LEN * column)) as usize;
+        let columns = self.as_u128();
+        let chips = (columns >> (Self::ROW_BITS_LEN * column)) as usize;
         let chip = ((chips) >> (Self::CHIP_BITS_LEN * row)) & mask(Self::CHIP_BITS_LEN) as usize;
         match chip {
             0b00 => None,
@@ -98,25 +102,40 @@ impl Board {
     }
 
     pub fn swap(&self) -> Self {
-        let mut result = Board::new();
+        let columns = self.as_u128();
+        let mut swapped_columns = 0u128;
         for column in 0..Self::COLUMN_LEN {
-            let row = (self.columns >> (Board::ROW_BITS_LEN * column)) & mask(Self::ROW_BITS_LEN);
-            let rev = Self::COLUMN_LEN - 1 - column;
-            result.columns |= row << (Self::ROW_BITS_LEN * rev);
+            let row = (columns >> (Board::ROW_BITS_LEN * column)) & mask(Self::ROW_BITS_LEN);
+            let rev_position = Self::COLUMN_LEN - 1 - column;
+            let rev = row << (Self::ROW_BITS_LEN * rev_position);
+            swapped_columns |= rev
         }
-        result
+        Board::from_pair(Board::pair_from_u128(swapped_columns))
     }
 
-    pub const fn as_u128(&self) -> u128 {
-        self.columns
+    pub const fn as_pair(&self) -> (u64, u32) {
+        self.column_pair
     }
 
-    pub const fn from_u128(value: u128) -> Self {
-        Self { columns: value }
+    const fn as_u128(&self) -> u128 {
+        (self.column_pair.0 as u128) << std::mem::size_of::<u32>() | (self.column_pair.1 as u128)
+    }
+
+    pub const fn from_pair(columns: (u64, u32)) -> Self {
+        Self {
+            column_pair: columns,
+        }
+    }
+
+    const fn pair_from_u128(value: u128) -> (u64, u32) {
+        let v64 = ((value >> std::mem::size_of::<u32>()) & mask(64)) as u64;
+        let v32 = (value & mask(32)) as u32;
+        (v64, v32)
     }
 
     pub fn filled(&self) -> bool {
-        self.columns.count_ones() as usize == Self::COLUMN_LEN * Self::ROW_LEN
+        let ones = self.column_pair.0.count_ones() + self.column_pair.1.count_ones();
+        ones as usize == Self::COLUMN_LEN * Self::ROW_LEN
     }
 
     pub fn winner(&self, column: usize, row: usize) -> Option<Chip> {
@@ -160,12 +179,13 @@ impl Board {
             Chip::Red => 0b01,
             Chip::Yellow => 0b10,
         };
-        self.columns |= chip << offset;
+        self.column_pair = Self::pair_from_u128(self.as_u128() | (chip << offset));
     }
 
     pub fn available_column_choices(&self) -> [bool; Self::COLUMN_LEN] {
         std::array::from_fn(|column| {
-            let chips = (self.columns >> (Self::ROW_BITS_LEN * column)) as usize;
+            let columns = self.as_u128();
+            let chips = (columns >> (Self::ROW_BITS_LEN * column)) as usize;
             let last_chip_in_row_mask = padded_mask(
                 Self::CHIP_BITS_LEN,
                 Self::ROW_BITS_LEN - Self::CHIP_BITS_LEN,
@@ -349,7 +369,9 @@ mod test {
         let mut board = Board::new();
         board.set_chip_at(2, 2, Chip::Red);
         board.set_chip_at(3, 4, Chip::Yellow);
+        println!("{board}");
         let board = board.swap();
+        println!("{board}");
         let column_end_position = Board::COLUMN_LEN - 1;
         assert_eq!(board.chip_at(column_end_position - 2, 2), Some(Chip::Red));
         assert_eq!(
