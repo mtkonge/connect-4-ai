@@ -118,7 +118,8 @@ impl Board {
     }
 
     const fn as_u128(&self) -> u128 {
-        (self.column_pair.0 as u128) << std::mem::size_of::<u32>() | (self.column_pair.1 as u128)
+        (self.column_pair.0 as u128) << std::mem::size_of::<u32>() * 8
+            | (self.column_pair.1 as u128)
     }
 
     pub const fn from_pair(columns: (u64, u32)) -> Self {
@@ -128,7 +129,7 @@ impl Board {
     }
 
     const fn pair_from_u128(value: u128) -> (u64, u32) {
-        let v64 = ((value >> std::mem::size_of::<u32>()) & mask(64)) as u64;
+        let v64 = ((value >> std::mem::size_of::<u32>() * 8) & mask(64)) as u64;
         let v32 = (value & mask(32)) as u32;
         (v64, v32)
     }
@@ -362,6 +363,23 @@ mod test {
         assert_eq!(board.chip_at(2, 2), Some(Chip::Red));
         assert_eq!(board.chip_at(3, 4), Some(Chip::Yellow));
         assert_eq!(board.chip_at(4, 3), None);
+    }
+
+    #[test]
+    fn from_pair_to_pair_ok() {
+        let mut board = Board::new();
+        board.set_chip_at(4, 3, Chip::Red);
+        board.set_chip_at(6, 0, Chip::Red);
+        assert_eq!(Board::from_pair(board.as_pair()), board)
+    }
+
+    #[test]
+    fn set_get_last_column() {
+        let mut board = Board::new();
+        board.set_chip_at(0, 0, Chip::Red);
+        board.set_chip_at(6, 0, Chip::Red);
+        board.set_chip_at(6, 1, Chip::Red);
+        assert_eq!(board.chip_at(6, 0), Some(Chip::Red));
     }
 
     #[test]
