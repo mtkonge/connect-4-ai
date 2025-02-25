@@ -18,16 +18,16 @@ impl Choice {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 #[repr(transparent)]
-struct Weight([i32; Board::COLUMN_LEN]);
+struct Weight([i16; Board::COLUMN_LEN]);
 
 impl Weight {
     pub fn blank() -> Self {
         Self([0; Board::COLUMN_LEN])
     }
 
-    pub const fn from_weights(list: [i32; Board::COLUMN_LEN]) -> Self {
+    pub const fn from_weights(list: [i16; Board::COLUMN_LEN]) -> Self {
         Self(list)
     }
 }
@@ -310,12 +310,19 @@ impl<'bot> BotTrainerBoardPosition<'bot> {
             };
             if let Some(winner) = game.board.winner(column, placed_row) {
                 debug_assert!(winner == game.turn);
+
+                let (winner, loser) = match game.turn {
+                    Chip::Red => (&mut self.red_bot, &mut self.yellow_bot),
+                    Chip::Yellow => (&mut self.yellow_bot, &mut self.red_bot),
+                };
+                winner.learn_from_played_choices(Action::Reward(10));
+                loser.learn_from_played_choices(Action::Punish(10));
                 let game_result = match game.turn {
                     Chip::Red => GameResult::RedWon,
                     Chip::Yellow => GameResult::YellowWon,
                 };
-                self.red_bot.learn_from_board(Chip::Red, &game_result);
-                self.yellow_bot.learn_from_board(Chip::Yellow, &game_result);
+                winner.learn_from_board(Chip::Red, &game_result);
+                loser.learn_from_board(Chip::Yellow, &game_result);
                 break game_result;
             } else if game.board.filled() {
                 let game_result = GameResult::Tie;
@@ -387,6 +394,11 @@ impl<'bot> BotTrainerGameResult<'bot> {
         for iteration in 1..=iterations {
             if iteration % (iterations / 5) == 0 {
                 println!("{}%", (iteration * 100) / iterations);
+                println!(
+                    "red: {}, yellow: {}",
+                    self.red_bot.memory.len(),
+                    self.yellow_bot.memory.len()
+                );
             }
             self.start_match(Game::new());
             std::mem::swap(self.red_bot, self.yellow_bot);
@@ -395,6 +407,7 @@ impl<'bot> BotTrainerGameResult<'bot> {
 }
 
 /// https://en.wikipedia.org/wiki/Linear_congruential_generator
+#[derive(Clone)]
 struct Rand(usize);
 
 impl Rand {
@@ -412,11 +425,12 @@ impl Rand {
     }
 }
 
+#[derive(Clone)]
 pub struct Bot {
     memory: HashMap<Board, Weight>,
     played_choices: [Choice; Board::COLUMN_LEN * Board::ROW_LEN / 2],
     played_choices_len: usize,
-    pub exploration: i32,
+    pub exploration: i16,
     rand: Rand,
 }
 
@@ -426,7 +440,7 @@ pub enum Action {
 }
 
 impl Bot {
-    pub fn new(exploration: i32, seed: usize) -> Self {
+    pub fn new(exploration: i16, seed: usize) -> Self {
         let played_choices: [Choice; Board::COLUMN_LEN * Board::ROW_LEN / 2] =
             std::array::from_fn(|_| Choice::blank());
         Self {
@@ -438,19 +452,19 @@ impl Bot {
         }
     }
 
-    fn lesson_severity_from_turn(&self, turn: usize) -> i32 {
+    fn lesson_severity_from_turn(&self, turn: usize) -> i16 {
         let last_turn = self.played_choices_len - 1;
         if turn == last_turn {
-            return i32::MAX;
+            return i16::MAX;
         }
         let result = 0.02 * (turn as f64).powi(2);
-        result as i32
+        result as i16
     }
 
     fn learn_from_board(&mut self, bot_chip: Chip, game_result: &GameResult) {
         for idx in 0..self.played_choices_len {
             let last_turn = self.played_choices_len - 1;
-            let Choice { column, mut board } = self.played_choices[idx];
+            let Choice { column, board } = self.played_choices[idx];
             let (weights, swapped) = self.get_or_insert_memory_weights(board);
             let column = if swapped {
                 Board::COLUMN_LEN - 1 - column
@@ -458,29 +472,30 @@ impl Bot {
                 column
             };
 
-            board
-                .place_chip(column, bot_chip)
-                .expect("Unreachable: Our bot is perfect B)");
-
             let weight = &mut weights.0[column];
-            if *weight == i32::MAX || *weight == i32::MIN {
-                continue;
-            }
             if idx == last_turn {
                 match game_result {
                     GameResult::RedWon => match bot_chip {
-                        Chip::Red => *weight = i32::MAX,
-                        Chip::Yellow => *weight = i32::MIN,
+                        Chip::Red => *weight = i16::MAX,
+                        Chip::Yellow => *weight = i16::MIN,
                     },
                     GameResult::YellowWon => match bot_chip {
-                        Chip::Red => *weight = i32::MIN,
-                        Chip::Yellow => *weight = i32::MAX,
+                        Chip::Red => *weight = i16::MIN,
+                        Chip::Yellow => *weight = i16::MAX,
                     },
                     GameResult::Tie => (),
                 }
                 continue;
             }
-            *weight += board.value_of_board(bot_chip) as i32;
+            if let Some(new_weight) = weight.checked_add(board.value_of_board(bot_chip)) {
+                *weight = new_weight;
+            } else {
+                if *weight > 0 {
+                    *weight = i16::MAX;
+                } else {
+                    *weight = i16::MIN;
+                }
+            }
         }
 
         self.played_choices_len = 0
@@ -497,22 +512,29 @@ impl Bot {
                 column
             };
             let weight = &mut weights.0[column];
-            if *weight == i32::MAX || *weight == i32::MIN {
-                continue;
-            }
             match action {
                 Action::Reward(base) => {
-                    if lesson_severity == i32::MAX {
-                        *weight = i32::MAX
+                    if lesson_severity == i16::MAX {
+                        *weight = i16::MAX
                     } else {
-                        *weight += lesson_severity + base as i32
+                        if let Some(new_weight) = weight.checked_add(lesson_severity + base as i16)
+                        {
+                            *weight = new_weight;
+                        } else {
+                            *weight = i16::MAX;
+                        }
                     }
                 }
                 Action::Punish(base) => {
-                    if lesson_severity == i32::MAX {
-                        *weight = i32::MIN
+                    if lesson_severity == i16::MAX {
+                        *weight = i16::MIN
                     } else {
-                        *weight -= lesson_severity + base as i32
+                        if let Some(new_weight) = weight.checked_sub(lesson_severity + base as i16)
+                        {
+                            *weight = new_weight;
+                        } else {
+                            *weight = i16::MIN;
+                        }
                     }
                 }
             };
@@ -545,7 +567,7 @@ impl Bot {
     pub fn choose(&mut self, board: Board) -> Choice {
         let exploration = self.exploration;
         let (weights, swapped) = self.get_or_insert_memory_weights(board);
-        let weights: Box<dyn Iterator<Item = i32>> = if swapped {
+        let weights: Box<dyn Iterator<Item = i16>> = if swapped {
             Box::new(weights.0.into_iter().rev())
         } else {
             Box::new(weights.0.into_iter())
@@ -572,7 +594,7 @@ impl Bot {
         let mut available_choices: Vec<_> = available_choices
             .iter()
             .filter_map(|(idx, weight)| {
-                if *max_weight == i32::MIN {
+                if *max_weight == i16::MIN {
                     return Some(*idx);
                 }
                 let within_threshold = *weight >= max_weight - exploration;
@@ -650,7 +672,7 @@ const fn deserialize_weights(
     };
 
     let weight = {
-        let mut weight_bytes = [[0; std::mem::size_of::<i32>()]; Board::COLUMN_LEN];
+        let mut weight_bytes = [[0; std::mem::size_of::<i16>()]; Board::COLUMN_LEN];
         let mut weight_idx = 0;
         loop {
             let mut weight_byte_idx = 0;
@@ -670,7 +692,7 @@ const fn deserialize_weights(
         let mut weight_idx = 0;
         let mut weight = [0; Board::COLUMN_LEN];
         loop {
-            weight[weight_idx] = i32::from_le_bytes(weight_bytes[weight_idx]);
+            weight[weight_idx] = i16::from_le_bytes(weight_bytes[weight_idx]);
             weight_idx += 1;
             if weight_idx == weight.len() {
                 break;
@@ -691,9 +713,8 @@ mod test {
     #[test]
     fn serde() {
         let board = Board::from_u128(0x12841928129481294);
-        let weights = Weight::from_weights([
-            0x2813213, 0x2318921, 0x2183931, 0x2183931, 0x821931, 0x82194, 0x2148112,
-        ]);
+        let weights =
+            Weight::from_weights([0x2813, 0x2891, 0x3931, 0x3931, 0x5219, 0x4294, 0x2148]);
 
         let result = deserialize_weights(serialize_weights(&board, &weights));
 
