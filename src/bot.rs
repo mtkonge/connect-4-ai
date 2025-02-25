@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use std::collections::HashMap;
+use std::{collections::HashMap, i16};
 
 use crate::board::{Board, Chip};
 
@@ -137,6 +137,8 @@ impl GladiatorGame {
             };
             self.red_bot.learn_from_played_choices(red);
             self.yellow_bot.learn_from_played_choices(yellow);
+            self.red_bot.clear_played_choices();
+            self.yellow_bot.clear_played_choices();
 
             std::mem::swap(&mut self.red_bot, &mut self.yellow_bot);
             std::mem::swap(
@@ -256,6 +258,7 @@ impl<'bot> MinMaxBotTrainer<'bot> {
                     Action::Punish(10)
                 };
                 self.bot.learn_from_played_choices(action);
+                self.bot.clear_played_choices();
                 break match winner {
                     Chip::Red => GameResult::RedWon,
                     Chip::Yellow => GameResult::YellowWon,
@@ -267,6 +270,7 @@ impl<'bot> MinMaxBotTrainer<'bot> {
                     Action::Reward(1)
                 };
                 self.bot.learn_from_played_choices(action);
+                self.bot.clear_played_choices();
                 break GameResult::Tie;
             };
             game.next_turn();
@@ -323,11 +327,15 @@ impl<'bot> BotTrainerBoardPosition<'bot> {
                 };
                 winner.learn_from_board(Chip::Red, &game_result);
                 loser.learn_from_board(Chip::Yellow, &game_result);
+                winner.clear_played_choices();
+                loser.clear_played_choices();
                 break game_result;
             } else if game.board.filled() {
                 let game_result = GameResult::Tie;
                 self.red_bot.learn_from_board(Chip::Red, &game_result);
                 self.yellow_bot.learn_from_board(Chip::Yellow, &game_result);
+                self.red_bot.clear_played_choices();
+                self.yellow_bot.clear_played_choices();
                 break game_result;
             }
             game.next_turn();
@@ -377,6 +385,8 @@ impl<'bot> BotTrainerGameResult<'bot> {
                 };
                 winner.learn_from_played_choices(Action::Reward(10));
                 loser.learn_from_played_choices(Action::Punish(10));
+                winner.clear_played_choices();
+                loser.clear_played_choices();
                 break match game.turn {
                     Chip::Red => GameResult::RedWon,
                     Chip::Yellow => GameResult::YellowWon,
@@ -384,6 +394,8 @@ impl<'bot> BotTrainerGameResult<'bot> {
             } else if game.board.filled() {
                 self.red_bot.learn_from_played_choices(Action::Punish(1));
                 self.yellow_bot.learn_from_played_choices(Action::Reward(1));
+                self.red_bot.clear_played_choices();
+                self.yellow_bot.clear_played_choices();
                 break GameResult::Tie;
             }
             game.next_turn();
@@ -461,6 +473,10 @@ impl Bot {
         result as i16
     }
 
+    pub fn clear_played_choices(&mut self) {
+        self.played_choices_len = 0;
+    }
+
     fn learn_from_board(&mut self, bot_chip: Chip, game_result: &GameResult) {
         for idx in 0..self.played_choices_len {
             let last_turn = self.played_choices_len - 1;
@@ -497,8 +513,6 @@ impl Bot {
                 }
             }
         }
-
-        self.played_choices_len = 0
     }
 
     pub fn learn_from_played_choices(&mut self, action: Action) {
@@ -539,7 +553,6 @@ impl Bot {
                 }
             };
         }
-        self.played_choices_len = 0;
     }
 
     fn get_or_insert_memory_weights(&mut self, board: Board) -> (&mut Weight, bool) {
@@ -594,10 +607,8 @@ impl Bot {
         let mut available_choices: Vec<_> = available_choices
             .iter()
             .filter_map(|(idx, weight)| {
-                if *max_weight == i16::MIN {
-                    return Some(*idx);
-                }
-                let within_threshold = *weight >= max_weight - exploration;
+                let threshold = max_weight.checked_sub(exploration).unwrap_or(i16::MIN);
+                let within_threshold = *weight >= threshold;
                 if within_threshold {
                     Some(*idx)
                 } else {

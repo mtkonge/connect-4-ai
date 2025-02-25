@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use board::Chip;
 use bot::{
     Bot, BotTrainerBoardPosition, BotTrainerGameResult, Game, GladiatorBotTrainer, MinMaxBotTrainer,
@@ -52,19 +53,19 @@ fn bot_vs_bot_and_loss() {
     let mut yellow = Bot::new(50, 0x58008);
     let check_loss_times = 1000;
     let iterations = 100_000_000;
-    let mut last_red_bot = red.clone();
+    let mut last_yellow_bot = yellow.clone();
 
     for _ in 0..check_loss_times {
         let trainer = BotTrainerBoardPosition::new(&mut red, &mut yellow);
         trainer.start_with_iterations(iterations / check_loss_times);
-        let test_result = test_bot_vs_bot(&mut red, &mut last_red_bot);
+        let test_result = test_bot_vs_bot(&mut red, &mut last_yellow_bot);
 
         println!(
             "current: {}, last: {}",
             test_result.1 * 100 / test_result.2,
             test_result.2 * 100 / test_result.1
         );
-        last_red_bot = red.clone()
+        last_yellow_bot = yellow.clone();
     }
 }
 
@@ -141,5 +142,5 @@ fn trained_bot_learning_from_game_result_vs_trained_bot_learning_from_board_posi
 }
 
 fn main() {
-    trained_bot_learning_from_game_result_vs_trained_bot_learning_from_board_positions();
+    bot_vs_bot_and_loss();
 }
