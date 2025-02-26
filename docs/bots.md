@@ -159,7 +159,7 @@ which means, for this chip, `0`:
 |X OX OX|
 ```
 
-it would look like this:
+the possible stripes within the bounds it would check would look like this:
 
 ```
 |-  -  -|
@@ -185,7 +185,15 @@ this is then done for each chip on the board, to calculate the board value
 
 ## trainers
 
-TODO
+### gladiator
+
+a bot trainer which setups up `arena_size` amount of fights. each fight has 2 bots. the bots then fight for `iterations` iterations each, and the winner goes on to fight against the other winners, until there is only one remaining
+
+### minmax
+
+plays a bot against the minmax algorithm for `iterations` iterations
+
+### rest of the fucking 🦉
 
 ## minmax
 
