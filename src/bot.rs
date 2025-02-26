@@ -624,7 +624,7 @@ impl Bot {
     }
 }
 
-const fn copy_from_to<const SRC_LEN: usize, const DEST_LEN: usize>(
+fn copy_from_to<const SRC_LEN: usize, const DEST_LEN: usize>(
     (src, src_idx): (&[u8; SRC_LEN], &mut usize),
     (dest, dest_idx): (&mut [u8; DEST_LEN], &mut usize),
 ) {
@@ -638,7 +638,7 @@ const fn copy_from_to<const SRC_LEN: usize, const DEST_LEN: usize>(
     }
 }
 
-const fn serialize_weights(
+fn serialize_weights(
     board: &Board,
     weight: &Weight,
 ) -> [u8; std::mem::size_of::<Board>() + std::mem::size_of::<Weight>()] {
@@ -666,7 +666,7 @@ const fn serialize_weights(
     result
 }
 
-const fn deserialize_weights(
+fn deserialize_weights(
     bytes: [u8; std::mem::size_of::<Board>() + std::mem::size_of::<Weight>()],
 ) -> (Board, Weight) {
     let mut byte_idx = 0;

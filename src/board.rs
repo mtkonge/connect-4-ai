@@ -291,6 +291,7 @@ impl Board {
                                 column as isize + column_dir * idx,
                                 row as isize + row_dir * idx,
                             );
+
                             if !(0..Self::COLUMN_LEN as isize).contains(&column)
                                 || !(0..Self::ROW_LEN as isize).contains(&row)
                             {
@@ -532,6 +533,32 @@ mod test {
         assert_eq!(
             board.win_possibilities_at_position(2, 0),
             Some((Chip::Yellow, 5))
+        )
+    }
+
+    #[test]
+    fn win_possibilities_at_position_for_document() {
+        let mut board = Board::new();
+
+        let _ = board.place_chip(0, Chip::Red).unwrap();
+        let _ = board.place_chip(0, Chip::Red).unwrap();
+
+        let _ = board.place_chip(2, Chip::Yellow).unwrap();
+
+        let _ = board.place_chip(3, Chip::Red).unwrap();
+        let _ = board.place_chip(3, Chip::Yellow).unwrap();
+
+        let _ = board.place_chip(5, Chip::Yellow).unwrap();
+        let _ = board.place_chip(5, Chip::Yellow).unwrap();
+
+        let _ = board.place_chip(6, Chip::Red).unwrap();
+        let _ = board.place_chip(6, Chip::Yellow).unwrap();
+
+        println!("{board}");
+
+        assert_eq!(
+            board.win_possibilities_at_position(3, 1),
+            Some((Chip::Yellow, 8))
         )
     }
 }
