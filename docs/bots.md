@@ -1,6 +1,10 @@
-# trainers
+# bots
 
-high-level overview of our bot trainers and their bot training strategies
+high-level overview of:
+
+- our bots
+- our bot trainers and their bot training strategies
+- the min max algorithm
 
 ## bots
 
@@ -20,7 +24,7 @@ in order to update the weights, as the bot plays, it saves their choices
 
 at the end of the match, the bot then applies a reinforcement to the weights depending on the current board state. 
 
-the reinforcement is based on whether:
+the reinforcement is based on whether (values are an approximation):
 
 - it won (+10)
 - it lost (-10)
@@ -171,7 +175,7 @@ which has
 |1  8  3|
 | 2 - 4 |
 |  ---  |
-|X--0765|
+|X--#765|
 |X -X-OX|
 ```
 
@@ -179,4 +183,10 @@ which has
 
 this is then done for each chip on the board, to calculate the board value
 
+## trainers
+
+TODO
+
 ## minmax
+
+RAHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH 🦅🦅🦅🦅🇺🇸🇺🇸🇺🇸🇺🇸🔥🔥🔥🔥🔥🔥
