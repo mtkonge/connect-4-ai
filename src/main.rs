@@ -49,23 +49,49 @@ fn test_bot_vs_bot(bot_1: &mut Bot, bot_2: &mut Bot) -> (i32, i32, i32) {
 }
 
 fn bot_vs_bot_and_loss() {
-    let mut red = Bot::new(50, 0x80085);
+let mut seed = 0x80085;
+    let mut red = Bot::new(50, seed);
     let mut yellow = Bot::new(50, 0x58008);
     let check_loss_times = 1000;
     let iterations = 100_000_000;
-    let mut last_yellow_bot = yellow.clone();
+    let mut last_red_bot = red.clone();
+let mut test_results: Vec<(i32, i32, i32)> = Vec::new();
 
-    for _ in 0..check_loss_times {
+    for i in 0..check_loss_times {
         let trainer = BotTrainerBoardPosition::new(&mut red, &mut yellow);
         trainer.start_with_iterations(iterations / check_loss_times);
-        let test_result = test_bot_vs_bot(&mut red, &mut last_yellow_bot);
+
+        red.exploration = 5;
+        let test_result = test_bot_vs_bot(&mut red, &mut last_red_bot);
+test_results.push(test_result);
+        red.exploration = 50;
 
         println!(
-            "current: {}, last: {}",
-            test_result.1 * 100 / test_result.2,
-            test_result.2 * 100 / test_result.1
+            "current_bot_win_rate: {}, old_bot_win_rate: {}",
+            test_result.1 * 100 / (test_result.2 + test_result.1 + test_result.0),
+            test_result.2 * 100 / (test_result.2 + test_result.1 + test_result.0)
         );
-        last_yellow_bot = yellow.clone();
+        if i % (check_loss_times / 100) == 0 {
+            last_red_bot = red.clone();
+            seed += 1;
+            last_red_bot.change_seed(seed);
+            last_red_bot.exploration = 5;
+            let sum_test_result: (i32, i32, i32) =
+                test_results.iter().fold((0, 0, 0), |left, right| {
+                    (left.0 + right.0, left.1 + right.1, left.2 + right.2)
+                });
+            let average_test_result = (
+                sum_test_result.0 / test_results.len() as i32,
+                sum_test_result.1 / test_results.len() as i32,
+                sum_test_result.2 / test_results.len() as i32,
+            );
+
+            println!(
+                "average_current_bot_win_rate: {}, average_old_bot_win_rate: {}",
+                average_test_result.1 * 100 / (test_result.2 + test_result.1 + test_result.0),
+                average_test_result.2 * 100 / (test_result.2 + test_result.1 + test_result.0)
+            );
+        }
     }
 }
 

@@ -443,7 +443,7 @@ pub struct Bot {
     played_choices: [Choice; Board::COLUMN_LEN * Board::ROW_LEN / 2],
     played_choices_len: usize,
     pub exploration: i16,
-    rand: Rand,
+    pub rand: Rand,
 }
 
 pub enum Action {
@@ -462,6 +462,10 @@ impl Bot {
             exploration,
             rand: Rand::new(seed),
         }
+    }
+
+    pub fn change_seed(&mut self, seed: usize) {
+        self.rand = Rand::new(seed)
     }
 
     fn lesson_severity_from_turn(&self, turn: usize) -> i16 {
